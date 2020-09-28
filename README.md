@@ -28,3 +28,6 @@ compilation of the c++ code `get_trend.cpp`. This can be done using the included
 `make` builds the library<br>
 `make test` tests the library after compilation<br>
 `make clean` removes the compiled libraries
+
+n.b. compilation has only been tested on a Debian 10 system using gcc version
+8.3.0.
