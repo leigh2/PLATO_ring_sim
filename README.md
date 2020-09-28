@@ -31,3 +31,12 @@ compilation of the c++ code `get_trend.cpp`. This can be done using the included
 
 n.b. compilation has only been tested on a Debian 10 system using gcc version
 8.3.0.
+
+## To do
+* Vectorization with numpy means `ringed_planet_transit.py` is reasonably
+efficient, but it could be improved further by porting significant chunks to
+c++.
+* These simulations currently indicate that accurate modelling of stellar
+surface variability is crucial to extracting the most value out of PLATO light
+curves. This needs to be included before optimal extraction of ringed planet
+transits using these codes from PLATO data (simulated or otherwise) is realised.
