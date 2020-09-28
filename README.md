@@ -16,7 +16,7 @@ I rely on the Plato Solar-like Light-curve Simulator `PSLS.py` to incorporate
 realistic observational noise and stellar surface variability for testing
 purposes. See:<br>
 https://sites.lesia.obspm.fr/psls/<br>
-and Samadi, R et al. (2019A&A...624A.117S)
+and Samadi, R et al. ([2019A&A...624A.117S](https://ui.adsabs.harvard.edu/abs/2019A%26A...624A.117S/abstract))
 
 This is demonstrated in [`rpt_plato.ipynb`](rpt_plato.ipynb) and requires the
 compilation of a small c++ routine to perform first order smoothing, see below
@@ -26,7 +26,8 @@ for details.
 A first-order light curve smoothing is performed with a small c++ routine to
 measure a moving window mean and standard error. [`get_trend.py`](get_trend.py)
 requires compilation of the c++ code [`get_trend.cpp`](get_trend.cpp). This can
-be done using the included Makefile, and it has no noteworthy dependencies.
+be done using the included [Makefile](Makefile), and it has no noteworthy
+dependencies.
 
 `make` builds the library<br>
 `make test` tests the library after compilation<br>
