@@ -16,11 +16,11 @@ I rely on the Plato Solar-like Light-curve Simulator `PSLS.py` to incorporate
 realistic observational noise and stellar surface variability for testing
 purposes. See:<br>
 https://sites.lesia.obspm.fr/psls/<br>
-and Samadi, R et al. ([2019A&A...624A.117S](https://ui.adsabs.harvard.edu/abs/2019A%26A...624A.117S/abstract))
+and Samadi, R et al. ([2019A&A...624A.117S](https://ui.adsabs.harvard.edu/abs/2019A%26A...624A.117S))
 
 This is demonstrated in [`rpt_plato.ipynb`](rpt_plato.ipynb) and requires the
-compilation of a small c++ routine to perform first order smoothing, see below
-for details.
+compilation of a tiny c++ lib I wrote to perform first order smoothing, see
+below for details.
 
 #### Light curve smoothing
 A first-order light curve smoothing is performed with a small c++ routine to
@@ -44,3 +44,5 @@ but it could be improved further by porting significant chunks to c++.
 surface variability is crucial to extracting the most value out of PLATO light
 curves. This needs to be included before optimal extraction of ringed planet
 transits using these codes from PLATO data (simulated or otherwise) is realised.
+See e.g. Barros, S.C.C. et al.
+([2020A&A...634A..75B](https://ui.adsabs.harvard.edu/abs/2020A%26A...634A..75B))
