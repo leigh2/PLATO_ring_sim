@@ -3,8 +3,8 @@
 
 using namespace std;
 
-void get_trend(const double *t,
-               const double *f,
+void get_trend(const double *f,
+               const bool *ol,
                const int arr_size,
                const int kernel_size,
                double *f_trend,
@@ -13,13 +13,13 @@ void get_trend(const double *t,
   /*
   Return the moving window mean and standard error.
   Arguments:
-  -- times (sorted chronologically)
-  -- fluxes
-  -- array size
-  -- kernel size (number of points before and after each time point to eval)
+  -- array (ordered)
+  -- boolean mask, true where element should be omitted from mean/stderr
+  -- array length
+  -- kernel size (number of points each side array elements to define window)
   Returns:
-  -- trend flux at each observation time
-  -- approx. error on trend flux at each obs time
+  -- mean in window around array element
+  -- standard error on mean in window around array element
   */
 
   // make the measurement
@@ -31,14 +31,18 @@ void get_trend(const double *t,
     jend = min(arr_size, i+kernel_size);
     for (int j = jstart; j < jend; j++) // for each point in window
     {
-      sum += f[j];
-      count += 1;
+      if (!ol[j]) {
+        sum += f[j];
+        count += 1;
+      }
     }
     f_trend[i] = sum/count;
 
     for (int j = jstart; j < jend; j++) // for each point in window
     {
-      ssqd += pow(f[j]-f_trend[i], 2);
+      if (!ol[j]) {
+        ssqd += pow(f[j]-f_trend[i], 2);
+      }
     }
     f_error[i] = sqrt(ssqd / count) / sqrt(count);
 
@@ -51,13 +55,13 @@ void get_trend(const double *t,
 }
 
 extern "C" {
-  void c_get_trend(const double *t,
-                   const double *f,
+  void c_get_trend(const double *f,
+                   const bool *ol,
                    const int arr_size,
                    const int kernel_size,
                    double *f_trend,
                    double *f_error)
   {
-      get_trend(t, f, arr_size, kernel_size, f_trend, f_error);
+      get_trend(f, ol, arr_size, kernel_size, f_trend, f_error);
   }
 }

@@ -5,8 +5,8 @@ from cffi import FFI
 
 ffi = FFI()
 ffi.cdef("""
-void c_get_trend(const double *t,
-                 const double *f,
+void c_get_trend(const double *f,
+                 const bool *ol,
                  const int arr_size,
                  const int kernel_size,
                  double *f_trend,
@@ -39,82 +39,53 @@ def get_trend(t, f, kernel_size, sigma_clip=False, data_mask=None):
         Cleaned fluxes.
     error : ndarray
         Approximated error on cleaned fluxes.
-
-    TODO:
-        - Fix minor issue of kernel size tweak where clipping points if this
-          function ever goes into production. Otherwise it's fine.
     """
 
-    # deal with masking data
-    if data_mask is not None:
-        t_sorted = t.copy()[data_mask]
-        f_sorted = f.copy()[data_mask]
-    else:
-        t_sorted = t.copy()
-        f_sorted = f.copy()
+    # check input arrays
+    t, f = map(lambda _a: np.asarray(_a), [t, f])
+    if t.ndim!=1 or f.ndim!=1:
+        raise RuntimeError("Time and flux arrays must be 1 dimensional")
 
     # sort the data chronologically
-    order = np.argsort(t_sorted)
-    f_sorted = f_sorted[order]
-    t_sorted = t_sorted[order]
+    order = np.argsort(t.copy())
+    f = f[order]
+    t = t[order]
+    # store original order too so we can restore later
+    orig_order = np.arange(t.size)[order]
+
+    # deal with data mask
+    if data_mask is not None:
+        data_mask = np.asarray(data_mask)
+        if data_mask.ndim!=1:
+            raise RuntimeError("Data mask must be 1 dimensional if provided")
+        outlier = data_mask[order] # order chronologically
+    else:
+        outlier = np.zeros(t.size, dtype=np.bool)
 
     # remove clear outliers (e.g. transit points)
-    # technically I should account for these in the kernel size, but so few
-    # should be removed that I very much doubt this is a problem. Fix if this
-    # ever goes into production though.
     if sigma_clip:
         for level in [10,9,8,7,6,5]: # reduce cut level each time
-            stdev = np.std(f_sorted)
-            not_outlier = f_sorted < level*stdev
-            t_sorted, f_sorted = t_sorted[not_outlier], f_sorted[not_outlier]
+            stdev = np.std(f[~outlier])
+            outlier[f > level*stdev] = True
 
     # initialise trend arrays
-    f_trend = f_sorted.copy()
-    f_error = np.zeros(f_sorted.size, dtype=np.float64)
+    f_trend = f.copy()
+    f_error = np.zeros(f.size, dtype=np.float64)
 
-    # make them contiguous
+    # make arrays contiguous
     _contig = lambda arr: np.ascontiguousarray(arr)
-    t_sorted, f_sorted, f_trend, f_error = map(_contig,
-        [t_sorted, f_sorted, f_trend, f_error])
+    f, outlier, f_trend, f_error = map(_contig, [f, outlier, f_trend, f_error])
 
     # ffi cast
     _cast = lambda arr: ffi.cast('double *', ffi.from_buffer(arr))
-    ts_ffi, fs_ffi, ft_ffi, fe_ffi = map(_cast,
-        [t_sorted, f_sorted, f_trend, f_error])
+    fs_ffi, ft_ffi, fe_ffi = map(_cast, [f, f_trend, f_error])
+    ol_ffi = ffi.cast('bool *', ffi.from_buffer(outlier))
 
     # run the c++ code
-    lib.c_get_trend(ts_ffi, fs_ffi, t_sorted.size, kernel_size, ft_ffi, fe_ffi)
+    lib.c_get_trend(fs_ffi, ol_ffi, t.size, kernel_size, ft_ffi, fe_ffi)
 
-    # Now interpolate over any clipped points. This has the added benefits of:
-    # - returning the output arrays to the same order as the input array
-    #   (although there are faster ways to do this).
-    # - Extrapolating the first and last points if they were clipped. Since the
-    #   trend is generally very smooth this should be fine.
-    trend = f*np.nan
-    error = f*np.nan
-    # find nearest indices
-    i1 = np.searchsorted(t_sorted, t, side='right')
-    i0 = i1-1
-    # deal with an uncomfortable bounds error
-    i0[i1==t_sorted.size] -= 1
-    i1[i1==t_sorted.size] -= 1
-    # values at each index
-    y0, y1 = f_trend[i0], f_trend[i1]
-    e0, e1 = f_error[i0], f_error[i1]
-    # distance from each point
-    dx0, dx1 = t - t_sorted[i0], t_sorted[i1] - t
-    dx = t_sorted[i1] - t_sorted[i0]
-    # where there are multiple identical t values (e.g. the time series is phase
-    # folded), we'll have to work around that
-    dxnz = dx!=0
-    # interpolated values
-    trend[dxnz] = (y0*dx1 + y1*dx0)[dx>0] / dx[dxnz]
-    error[dxnz] = np.sqrt((e0*dx1)**2 + (e1*dx0)**2)[dxnz] / dx[dxnz]
-    # where dx is zero just use the nearest value
-    trend[~dxnz] = y0[~dxnz]
-    error[~dxnz] = e0[~dxnz]
-
-    return trend, error
+    # return trend and stderror in original order
+    return f_trend[orig_order], f_error[orig_order]
 
 
 
@@ -124,43 +95,39 @@ if __name__=="__main__":
     import matplotlib.pyplot as plt
     from time import time
 
-    # run the code
-    test_data = np.load("tests/get_trend_test_data.npy")
+    # run test
+    np.random.seed(0)
+    _x = np.linspace(0, 3*np.pi, 10000)
+    _y = np.random.normal(loc=np.sin(_x), scale=0.1)
     t0 = time()
-    _trend, _error = get_trend(test_data["time"], test_data["dflux_ppm"], 200)
-    print("got trend in {:.3f}s".format(time()-t0))
+    _trend, _error = get_trend(_x, _y, 100)
+    o_sig = np.std(_y-_trend)
+    print("""\
+got trend in {:.0f}ms
+input sigma: {:.2f}
+output sigma: {:.2f}\
+""".format((time()-t0)*1000., 0.1, o_sig))
 
     # check output is consistent with test validation data
     test_array = np.column_stack((_trend,_error))
     validation_data = np.load("tests/test_validation.npy")
-    assert np.count_nonzero(test_array-validation_data) == 0
+    assert np.count_nonzero(np.abs(test_array-validation_data)>1E-12) == 0
 
     # if test was successful store a demonstrative figure
-    plt.figure(figsize=(12,12))
+    fig, axes = plt.subplots(nrows=4, ncols=1, sharex=True, figsize=(12,12))
 
-    plt.subplot(411)
-    plt.scatter(test_data["time"], test_data["dflux_ppm"], s=1, alpha=0.05)
-    plt.xlabel("t (s)")
-    plt.ylabel(r"$\Delta$ flux (ppm)")
-    plt.title("before")
+    axes[0].scatter(_x, _y, s=1, alpha=0.1)
+    axes[0].set_ylabel(r"sin(x) + $\xi$")
 
-    plt.subplot(412)
-    plt.scatter(test_data["time"], _trend, s=1, alpha=0.05)
-    plt.xlabel("t (s)")
-    plt.ylabel(r"$\Delta$ flux (ppm)")
-    plt.title("trend")
+    axes[1].scatter(_x, _trend, s=1, alpha=0.1)
+    axes[1].set_ylabel(r"trend")
 
-    plt.subplot(413)
-    plt.scatter(test_data["time"], _error, s=1, alpha=0.05)
-    plt.xlabel("t (s)")
-    plt.ylabel(r"$\Delta$ flux (ppm)")
-    plt.title(r"$\sigma_{\rm trend}$")
+    axes[2].scatter(_x, _error, s=1, alpha=0.1)
+    axes[2].set_ylabel(r"$\sigma_{\rm trend}$")
 
-    plt.subplot(414)
-    plt.scatter(test_data["time"], test_data["dflux_ppm"]-_trend, s=1, alpha=0.05)
-    plt.xlabel("t (s)")
-    plt.ylabel(r"$\Delta$ flux (ppm)")
-    plt.title("after")
+    axes[3].scatter(_x, _y-_trend, s=1, alpha=0.1)
+    axes[3].set_xlabel("x")
+    axes[3].set_ylabel(r"sin(x) + $\xi$ - trend")
 
     plt.tight_layout()
     plt.savefig("tests/get_trend_test.png", bbox_inches="tight")
